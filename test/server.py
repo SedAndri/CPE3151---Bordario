@@ -75,7 +75,7 @@ def listenConnection(host='0.0.0.0', port=8000):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Simple chat server')
-    parser.add_argument('--host', default='0.0.0.0', help='Host/IP to bind (use 0.0.0.0 to accept from any)')
+    parser.add_argument('--host', default='192.168.0.113', help='Host/IP to bind (use 0.0.0.0 to accept from any)')
     parser.add_argument('--port', type=int, default=8000, help='Port to listen on')
     args = parser.parse_args()
 

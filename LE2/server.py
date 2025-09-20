@@ -38,7 +38,7 @@ def send_messages(conn: socket.socket, stop_event: threading.Event):
         stop_event.set()
 
 
-def listen_connection(host: str = "0.0.0.0", port: int = 8000):
+def listen_connection(host: str = "192.168.0.113", port: int = 8000):
     """Bind and listen for a single client connection. Returns (conn, addr, server_socket)."""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

@@ -1,3 +1,11 @@
+# **********************************************************************
+# File: server.py
+# Authors: Bordario, Sid Andre P., Sasil, Korinne Margaret V.
+# Class: CPE 3151
+# Group/Schedule: Group 1 Sat 7:30-10:30 AM
+# Description: Connects to the server and uses threads for concurrent message sending and receiving. Chat ends when 'exit' or 'quit' is entered.
+# **********************************************************************
+
 import socket
 import threading
 
@@ -38,7 +46,7 @@ def send_messages(conn: socket.socket, stop_event: threading.Event):
         stop_event.set()
 
 
-def listen_connection(host: str = "192.168.0.113", port: int = 8000):
+def listen_connection(host: str = "127.0.0.1", port: int = 8000):
     """Bind and listen for a single client connection. Returns (conn, addr, server_socket)."""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

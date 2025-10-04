@@ -1,3 +1,12 @@
+# **********************************************************************
+# File: client.py
+# Authors: Bordario, Sid Andre P., Sasil, Korinne Margaret V.
+# Class: CPE 3151
+# Group/Schedule: Group 1 Sat 7:30-10:30 AM
+# Description: Waits for a client connection and enables two-way text communication using threads for simultaneous message sending and receiving.
+# **********************************************************************
+
+
 import socket
 import threading
 

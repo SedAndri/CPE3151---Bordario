@@ -505,39 +505,86 @@ def listenConnection(host='127.0.0.1', port=8000):
 
 
 if __name__ == '__main__':
+    # Entry point: configure the server from command-line arguments.
+    # argparse: parses --host and --port so you can change them without editing code.
     # Parse CLI args for host and port
     parser = argparse.ArgumentParser(description='Simple chat server')
     parser.add_argument('--host', default='127.0.0.1', help='Host/IP to bind (use 127.0.0.1 for local-only)')
     parser.add_argument('--port', type=int, default=8000, help='Port to listen on')
     args = parser.parse_args()
 
+    # Event(): thread-safe flag used by receiveMsg and sendMessage to coordinate shutdown.
     stop = Event()    # Shared stop flag for threads and loops
     srv_sock = None   # Server listening socket (to close on exit)
     conn = None       # Client connection socket
     try:
+        # listenConnection(): creates a TCP socket, binds to host:port, listens,
+        # and blocks until one client connects. Returns:
+        #   - conn: the connected socket used for the chat
+        #   - addr: client's (ip, port)
+        #   - srv_sock: listening socket (kept so we can close it later)
         # Wait for a client to connect
         conn, addr, srv_sock = listenConnection(args.host, args.port)
+
+        # generate_rsa_keypair(): creates a fresh 2048-bit RSA keypair for this session.
+        # The private key decrypts incoming data and signs outgoing messages.
         # Generate server RSA keypair for this session
         server_priv = generate_rsa_keypair()
+        # .public_key(): derives the matching public key used by the client to
+        # encrypt data to this server and verify this server’s signatures.
         server_pub = server_priv.public_key()
+
+        # send_frame(): sends length-prefixed bytes over the TCP connection so the
+        # receiver knows message boundaries.
+        # serialize_public_key(): turns the RSA public key object into PEM bytes
+        # suitable for transmission to the client.
         # Send server public key (PEM) to client for encryption
         send_frame(conn, serialize_public_key(server_pub))
+
+        # recv_frame(): reads exactly one framed message (length header + payload)
+        # from the socket. Here it receives the client’s public key in PEM form.
         # Receive client public key (PEM) for return traffic
         peer_pub_pem = recv_frame(conn)
         if not peer_pub_pem:
             # Abort if key exchange fails
             raise RuntimeError('Key exchange failed (no client public key).')
+
+        # load_public_key(): converts the received PEM bytes back into an RSA
+        # public key object used to encrypt messages to the client and verify
+        # the client’s signatures.
         # Load client public key to encrypt outbound messages
         peer_pub = load_public_key(peer_pub_pem)
         print('Secure channel established.')
+
+        # Thread(): from threading, starts a background worker thread.
+        # receiveMsg(): runs in that thread; it keeps calling recv_frame(),
+        # unwrap_signed_message(), and decrypt_payload() to:
+        #   - receive encrypted+signed messages from the client
+        #   - verify signatures with peer_pub
+        #   - decrypt using server_priv
+        #   - print messages; sets stop when "exit" or errors occur.
         # Start receiver thread that decrypts incoming messages
         rcv = Thread(target=receiveMsg, args=(conn, stop, server_priv, peer_pub), daemon=True)
         rcv.start()
+
+        # sendMessage(): runs on the main thread. It:
+        #   - prompts the user for input
+        #   - uses build_signed_message() + encrypt_payload() to encrypt and sign
+        #     the text with server_priv (sign) and peer_pub (encrypt)
+        #   - sends the framed result with send_frame()
+        #   - if user types "exit", sends a final exit message and sets stop.
         # Main thread handles user input and sending encrypted messages
         sendMessage(conn, stop, peer_pub, server_priv)
+
         # Wait briefly for receiver to finish
         rcv.join(timeout=1)
     finally:
+        # finally-block: always executed (normal exit or exception) to avoid
+        # leaving sockets open.
+        # safe_close(): shuts down and closes the socket, ignoring errors so it
+        # is safe to call even if the socket is already closed or broken.
         # Cleanly close sockets on exit
         safe_close(conn)
         safe_close(srv_sock)
+
+# ...existing code...

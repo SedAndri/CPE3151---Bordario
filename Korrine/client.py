@@ -431,7 +431,18 @@ def receiver(sock, stop, private_key, peer_public_key):
             stop.set()
             break
 
+
 if __name__ == '__main__':
+    # Overall flow:
+    #   1. Parse command-line options to know which server (host/port) to connect to.
+    #   2. Open a TCP socket and connect to the server.
+    #   3. Perform an RSA key exchange to set up a secure channel.
+    #   4. Start a background receiver thread that decrypts & verifies incoming messages.
+    #   5. In the main thread, read user input, encrypt & sign it, and send to the server.
+    #   6. When "exit" is typed or an error occurs, shut down both threads and close socket.
+
+    # argparse.ArgumentParser: parses CLI options like --host and --port and
+    # populates the `args` object with the chosen values.
     # Parse CLI args: host and port to connect
     parser = argparse.ArgumentParser(description='Simple chat client')
     parser.add_argument(
@@ -445,40 +456,53 @@ if __name__ == '__main__':
         default=8000,               #=============change port here=============
         help='Server port to connect to'
     )
+    # args: holds parsed CLI values, e.g., args.host and args.port
     args = parser.parse_args()
 
+    # socket.socket: creates a TCP/IP socket used to connect to the remote server.
     # Create a TCP socket and attempt to connect to the specified server
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     host = args.host
     port = args.port
     try:
+        # s.connect: establishes a TCP connection to (host, port).
         s.connect((host, port))
     except Exception as e:
         # Connection failed: report error and exit
         print(f'Failed to connect to {host}:{port} -> {e}')
+        # safe_close: shuts down and closes the socket, ignoring any errors.
         safe_close(s)
         raise SystemExit(1)
 
     # Connection succeeded: inform user and set up a stop event for clean shutdown
     print(f'Connected to server at {host}:{port}. Type messages and press Enter. Type "exit" to quit.')
+    # Event(): thread-safe flag used to coordinate shutdown between main and receiver thread.
     stop = Event()  # Shared stop flag between threads
 
     # Key exchange phase:
     # 1. Generate an RSA key pair for this client
     # 2. Receive the server's public key (PEM) as a framed message
     # 3. Send this client's public key (PEM) back to the server
+    # generate_rsa_keypair: creates a new 2048-bit RSA private key (with associated public key).
     client_priv = generate_rsa_keypair()
     client_pub = client_priv.public_key()
+    # recv_frame: reads one length-prefixed frame from the socket (here, server's PEM public key).
     server_pub_pem = recv_frame(s)
     if not server_pub_pem:
         # If we didn't get a valid server key, abort
         print('Failed to receive server public key.')
         safe_close(s)
         raise SystemExit(1)
+    # load_public_key: converts PEM bytes into a usable RSA public key object.
     server_pub = load_public_key(server_pub_pem)
+    # serialize_public_key: turns the client's public key into PEM bytes.
+    # send_frame: sends a length-prefixed frame containing those PEM bytes to the server.
     send_frame(s, serialize_public_key(client_pub))
     print('Secure channel established.')
 
+    # Thread: starts a background worker that runs the `receiver` function concurrently.
+    # receiver: continuously calls recv_frame + unwrap_signed_message to verify/decrypt
+    # incoming messages using server_pub (verify) and client_priv (decrypt), then prints them.
     # Start a background thread that receives, verifies, decrypts, and displays messages
     # The main thread will only handle user input and sending messages
     rcv = Thread(target=receiver, args=(s, stop, client_priv, server_pub), daemon=True)
@@ -487,11 +511,14 @@ if __name__ == '__main__':
     # Main send loop: read user input, sign & encrypt it, then send to the server
     while not stop.is_set():
         try:
+            # input: reads a line of text from the user on stdin.
             msg = input('Type Message: ')
             if msg.strip().lower() == 'exit':
                 # User requested to quit:
                 # try to send an encrypted/signed "exit" message, then stop
                 try:
+                    # build_signed_message: encrypts `msg` for server_pub and signs it with client_priv.
+                    # send_frame: transports the signed+encrypted blob as one framed message.
                     send_frame(s, build_signed_message(msg, client_priv, server_pub))
                 except Exception:
                     # Ignore errors on shutdown send
@@ -506,6 +533,10 @@ if __name__ == '__main__':
             stop.set()
             break
 
+    # rcv.join: wait briefly for the receiver thread to exit after stop is set.
     # Wait briefly for the receiver thread to terminate, then close the socket
     rcv.join(timeout=1)
+    # safe_close: ensures the client socket is cleanly shut down and closed.
     safe_close(s)
+
+# ...existing code...

@@ -66,6 +66,12 @@ def load_public_key(pem_bytes: bytes):
     # Parse a PEM-encoded public key back into an RSA key object
     return serialization.load_pem_public_key(pem_bytes)
 
+def hash_message(data: bytes) -> str:
+    # Compute SHA-256 hash and return hex string
+    digest = hashes.Hash(hashes.SHA256())
+    digest.update(data)
+    return digest.finalize().hex()
+
 def encrypt_payload(peer_public_key, plaintext: bytes) -> bytes:
     # Generate a fresh AES-256 key and 12-byte nonce per message
     aes_key = os.urandom(32)
@@ -73,6 +79,10 @@ def encrypt_payload(peer_public_key, plaintext: bytes) -> bytes:
     aesgcm = AESGCM(aes_key)
     # Encrypt plaintext with AES-GCM (provides confidentiality + integrity)
     ciphertext = aesgcm.encrypt(nonce, plaintext, None)
+
+    # Compute hash of the plaintext (this will be visible in Wireshark)
+    msg_hash = hash_message(plaintext)
+
     # Encrypt the AES key using the peer’s RSA public key with OAEP + SHA-256
     enc_key = peer_public_key.encrypt(
         aes_key,
@@ -82,11 +92,12 @@ def encrypt_payload(peer_public_key, plaintext: bytes) -> bytes:
             label=None
         )
     )
-    # Package encrypted key (k), nonce (n), and ciphertext (c) as base64 JSON
+    # Package encrypted key (k), nonce (n), ciphertext (c), and hash (h) as base64 JSON
     obj = {
         'k': base64.b64encode(enc_key).decode(),
         'n': base64.b64encode(nonce).decode(),
-        'c': base64.b64encode(ciphertext).decode()
+        'c': base64.b64encode(ciphertext).decode(),
+        'h': msg_hash,  # <--- hash in hex, readable in Wireshark
     }
     # Return bytes suitable for framing
     return json.dumps(obj).encode()
@@ -122,7 +133,10 @@ def receiveMsg(conn, stop, private_key):
                 break
             try:
                 # Decrypt message with server private key and decode text
-                text = decrypt_payload(private_key, frame).decode(errors='ignore')
+                plaintext = decrypt_payload(private_key, frame)
+                msg_hash = hash_message(plaintext)
+                text = plaintext.decode(errors='ignore')
+                print(f'Message hash (SHA-256): {msg_hash}')
             except Exception:
                 # Crypto or format error; terminate for safety
                 print('Decryption failed. Closing server...')
@@ -147,16 +161,18 @@ def sendMessage(conn, stop, peer_public_key):
     while not stop.is_set():
         try:
             msg = input('Type Message: ')
+            msg_bytes = msg.encode()
+            print(f'Message hash (SHA-256): {hash_message(msg_bytes)}')
             if msg.strip().lower() == 'exit':
                 # Send exit, then request stop
                 try:
-                    send_frame(conn, encrypt_payload(peer_public_key, msg.encode()))
+                    send_frame(conn, encrypt_payload(peer_public_key, msg_bytes))
                 except Exception:
                     pass
                 stop.set()
                 break
             # Normal message: encrypt and send
-            send_frame(conn, encrypt_payload(peer_public_key, msg.encode()))
+            send_frame(conn, encrypt_payload(peer_public_key, msg_bytes))
         except Exception:
             # On I/O or socket error, stop and exit
             stop.set()

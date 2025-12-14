@@ -603,6 +603,7 @@ def unwrap_signed_message(data: bytes, peer_public_key, private_key, session_key
     # Build the exact byte sequence that was signed: recipient fingerprint + ciphertext
     # This binds the message to the intended recipient and prevents key substitution
     signature_input = key_fingerprint(private_key.public_key()) + enc_blob
+    
     try:
         # Verify the sender's signature using their RSA public key (authenticity + integrity)
         peer_public_key.verify(
@@ -705,7 +706,12 @@ def receiver(sock, stop, private_key, peer_public_key, session_key):
             stop.set()
             break
 
-def run_client(host: str, port: int) -> None:
+if __name__ == '__main__':
+    # Parse CLI arguments that specify the remote server endpoint
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=8000)
+    args = parser.parse_args()
     """Establish and run a mutually authenticated, end-to-end encrypted chat session.
 
     This function drives the client side of the secure messaging protocol: it
@@ -746,13 +752,13 @@ def run_client(host: str, port: int) -> None:
     # Establish outbound TCP connection to the declared secure messaging server
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        s.connect((host, port))
+        s.connect((args.host, args.port))
     except Exception as e:
         # Fail fast on connection errors before any protocol state is created
         print(f'Connect failed: {e}')
         raise SystemExit(1)
 
-    print(f'Connected to {host}:{port}')
+    print(f'Connected to {args.host}:{args.port}')
 
     # Shared shutdown flag coordinating sender and background receiver thread
     stop = Event()
@@ -821,14 +827,3 @@ def run_client(host: str, port: int) -> None:
     # Let receiver thread finish processing before closing the transport
     rcv.join(timeout=1)
     safe_close(s)
-
-
-if __name__ == '__main__':
-    # Parse CLI arguments that specify the remote server endpoint
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=8000)
-    args = parser.parse_args()
-
-    # Run the secure client with validated command-line parameters
-    run_client(args.host, args.port)

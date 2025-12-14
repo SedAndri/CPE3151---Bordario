@@ -518,7 +518,7 @@ def key_fingerprint(public_key) -> bytes:
             cryptography backend does not support serializing this type of
             public key with the requested encoding/format.
     """
-    # Expect a cryptography public key object; derive a canonical binary form
+    # Expect a cryptography public key object; derive a canonical binary form (DER)
     der = public_key.public_bytes(
         encoding=serialization.Encoding.DER,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -592,7 +592,7 @@ def build_signed_message(text: str, signer, intended_recipient_key, session_key)
     # Bind ciphertext to the specific recipient by including their key fingerprint
     signature_input = key_fingerprint(intended_recipient_key) + enc_blob
 
-    # Sign (recipient_fingerprint || ciphertext) using RSA-PSS for integrity/authenticity
+    # Sign with sender private key (recipient_fingerprint || ciphertext) using RSA-PSS for integrity/authenticity
     signature = signer.sign(
         signature_input,
         asym_padding.PSS(

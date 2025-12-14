@@ -586,5 +586,3 @@ if __name__ == '__main__':
         # Cleanly close sockets on exit
         safe_close(conn)
         safe_close(srv_sock)
-
-# ...existing code...

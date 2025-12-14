@@ -432,6 +432,7 @@ def receiver(sock, stop, private_key, peer_public_key):
             break
 
 
+
 if __name__ == '__main__':
     # Overall flow:
     #   1. Parse command-line options to know which server (host/port) to connect to.
@@ -538,5 +539,3 @@ if __name__ == '__main__':
     rcv.join(timeout=1)
     # safe_close: ensures the client socket is cleanly shut down and closed.
     safe_close(s)
-
-# ...existing code...
